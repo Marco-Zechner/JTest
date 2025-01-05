@@ -100,22 +100,46 @@ namespace MarcoZechner.JTest {
                     {
                         CaseName = caseAttr.Name ?? "Case",
                         Parameters = string.Join(", ", caseAttr.Parameters),
-                        ParametersString = string.Join(", ", caseAttr.Parameters),
+                        ParametersString = caseAttr.Parameters.Select(p => p.ToString() ?? "null").ToArray(),
                         Status = TestStatus.Pending
                     };
 
                     testResult.Cases.Add(testCase);
 
                     var methodInfo = FindTestMethod(testResult.TestName);
-                    var parameters = ParseParameters(methodInfo.GetParameters(), testCase.Parameters);
+                    object[]? parameters = ParseParameters(methodInfo.GetParameters(), testCase.Parameters);
 
-                    testCase.ParametersString = string.Join(", ", parameters);
+                    testCase.ParametersString = parameters.Select(FormatParameter).ToArray();
                 }
 
                 testResult.TotalCases = Math.Max(testResult.Cases.Count, 1);
                 
                 _testResults.Add(testResult);
             }
+        }
+
+        private static string FormatParameter(object parameter) {
+            if (parameter == null)
+            {
+                return "null";
+            }
+
+            if (parameter is System.Collections.IDictionary dictionary)
+            {
+                return "{" + string.Join(", ", dictionary.Cast<System.Collections.DictionaryEntry>()
+                    .Select(entry => $"{entry.Key}: {entry.Value}")) + "}";
+            }
+
+            // Handle collections explicitly
+            if (parameter is System.Collections.IEnumerable enumerable && parameter is not string)
+            {
+                return "[" + string.Join(", ", enumerable.Cast<object>().Select(FormatParameter)) + "]";
+            }
+            
+            string simpleString = parameter.ToString() ?? "null";
+
+            // Use ToString for custom objects or primitives
+            return simpleString;
         }
 
         private static async Task RunTestMethodAsync(TestResult test)
@@ -490,13 +514,15 @@ namespace MarcoZechner.JTest {
 
                             string durationCase = testCase.Duration == 0 ? "" : $"[{testCase.Duration}ms]";
 
-                            Console.Write($"  {selected}{caseSymbol} {testCase.CaseName}({testCase.ParametersString}) {durationCase}");
+                            if (!testCasesDisplayStyle[i].casesExpanded[i1])
+                                Console.Write($"  {selected}{caseSymbol} {testCase.CaseName}({string.Join(", ", testCase.ParametersString)}) {durationCase}");
+                            else
+                                Console.Write($"  {selected}{caseSymbol} {testCase.CaseName}(\n{string.Join(",\n", testCase.ParametersString)}\n) {durationCase}");
 
                             if (testCase.Status == TestStatus.Failed)
                             {
                                 Console.ForegroundColor = ConsoleColor.Red;
-                                if (testCase.ErrorMessage == null)
-                                    testCase.ErrorMessage = "No error message provided.";
+                                testCase.ErrorMessage ??= "No error message provided.";
                                 if (!testCasesDisplayStyle[i].casesExpanded[i1])
                                 {
                                     Console.Write($" // {testCase.ErrorMessage.Split('\n')[0]}");
