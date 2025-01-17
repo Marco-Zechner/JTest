@@ -1,0 +1,199 @@
+using System.Reflection;
+using System.Text.RegularExpressions;
+
+namespace MarcoZechner.JTest{
+    public class JTestLoader{
+        
+        public static List<TestResult> LoadTests()
+        {
+            // Entry assembly is "Test"
+            List<TestResult> _testResults = [];
+            var _testAssembly = Assembly.GetEntryAssembly() 
+            ?? throw new InvalidOperationException("Unable to load the entry assembly.");
+
+            var testMethods = _testAssembly
+                .GetTypes()
+                .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                .Where(m => m.GetCustomAttribute<TestAttribute>() != null)
+                .OrderBy(m => m.GetCustomAttribute<TestAttribute>()?.Order ?? 0);
+
+            foreach (var method in testMethods)
+            {
+                var testAttr = method.GetCustomAttribute<TestAttribute>();
+                var testResult = new TestResult
+                {
+                    TestName = testAttr?.Name ?? method.Name,
+                    Status = TestStatus.Pending
+                };
+
+                // Load cases
+                var caseAttrs = method.GetCustomAttributes<CaseAttribute>();
+                foreach (var caseAttr in caseAttrs)
+                {
+                    var testCase = new CaseResult
+                    {
+                        CaseName = caseAttr.Name ?? "Case" + testResult.Cases.Count,
+                        Parameters = string.Join(", ", caseAttr.Parameters),
+                        ParametersString = [.. caseAttr.Parameters.Select(p => p.ToString() ?? "null")],
+                        Status = TestStatus.Pending
+                    };
+
+                    testResult.Cases.Add(testCase);
+
+                    var methodInfo = FindTestMethod(testResult.TestName);
+                    object[]? parameters = ParseParameters(methodInfo.GetParameters(), testCase.Parameters);
+
+                    testCase.ParametersString = [.. parameters.Select(FormatParameter)];
+
+                    if (caseAttr.UseInterpolationReplacement) {
+                        HashSet<(int a, int b)> interactedIndices = [];
+                        string pattern = @"\{(\d+)\}";
+                        string[] preProcessed = testCase.ParametersString;
+                        string[] postProcessed = testCase.ParametersString;
+
+                        for (int i = 0; i < preProcessed.Length; i++) {
+                            var input = preProcessed[i];
+                            MatchCollection matches = Regex.Matches(input, pattern);
+
+                            List<int> numbers = [];
+                            foreach (Match match in matches)
+                            {
+                                if (int.TryParse(match.Groups[1].Value, out int number))
+                                {
+                                    numbers.Add(number);
+                                }
+                            }
+
+                            foreach (int number in numbers) {
+                                if (number >= preProcessed.Length) {
+                                    throw new InvalidOperationException("Interpolation replacement index out of bounds.\n" + testAttr?.Name + " - " + caseAttr.Name);
+                                }
+                                if (number == i) {
+                                    throw new InvalidOperationException("Interpolation replacement can't be self-referential.\n" + testAttr?.Name + " - " + caseAttr.Name);
+                                }
+                                if (interactedIndices.Contains((number, i))) {
+                                    throw new InvalidOperationException("Interpolation replacement can't work both ways.\n" + testAttr?.Name + " - " + caseAttr.Name);
+                                }
+                                interactedIndices.Add((i, number));
+                                postProcessed[i] = postProcessed[i].Replace("{" + number + "}", preProcessed[number]);
+                            }
+                        }
+
+                        testCase.ParametersString = postProcessed;
+                    }
+                }
+
+                testResult.TotalCases = Math.Max(testResult.Cases.Count, 1);
+                
+                _testResults.Add(testResult);
+            }
+
+            return _testResults;
+        }
+
+        public static MethodInfo FindTestMethod(string testName)
+        {
+            var _testAssembly = Assembly.GetEntryAssembly() 
+            ?? throw new InvalidOperationException("Unable to load the entry assembly.");
+
+            return _testAssembly
+                .GetTypes()
+                .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
+                .First(m => m.GetCustomAttribute<TestAttribute>()?.Name == testName);
+        }
+
+        public static object[] ParseParameters(ParameterInfo[] parameterInfos, string parameters)
+        {
+            // Split parameter string by commas
+            var parameterValues = parameters.Split(',')
+                .Select(p => p.Trim())
+                .ToArray();
+
+            // Ensure parameter count matches
+            if (parameterInfos.Length != parameterValues.Length)
+            {
+                string error = $"Mismatch between method parameters ({parameterInfos.Length}) and provided arguments ({parameterValues.Length}).";
+                error += $"\nParameters: {string.Join(", ", parameterInfos.Select(p => p.Name))}";
+                error += $"\nArguments: {string.Join(", ", parameterValues)}";
+                throw new TargetParameterCountException(error);
+            }
+
+            // Convert each parameter to the appropriate type
+            return parameterInfos.Select((paramInfo, index) =>
+            {
+                var targetType = paramInfo.ParameterType;
+                var value = parameterValues[index];
+
+                // Handle nullable types
+                if (Nullable.GetUnderlyingType(targetType) != null)
+                {
+                    targetType = Nullable.GetUnderlyingType(targetType);
+                }
+
+                if (targetType == null)
+                    throw new InvalidOperationException("targetType is null");
+
+                // Direct conversion for basic types
+                if (targetType.IsPrimitive || targetType == typeof(string) || targetType == typeof(decimal))
+                {
+                    return Convert.ChangeType(value, targetType);
+                }
+
+                // Reflection-based resolution for complex types
+                return ResolveComplexType(targetType, value);
+            }).ToArray();
+        }
+
+        private static object ResolveComplexType(Type targetType, string name)
+        {
+            // Dynamically find the containing type (e.g., based on where the test method is defined)
+            var _testAssembly = Assembly.GetEntryAssembly() 
+            ?? throw new InvalidOperationException("Unable to load the entry assembly.");
+
+            var containingType = _testAssembly
+                .GetTypes()
+                .FirstOrDefault(t => t.GetMember(name, BindingFlags.Static | BindingFlags.Public).Length != 0) 
+                ?? throw new InvalidOperationException($"No containing type found for '{name}'.");
+
+            // Look for a matching static field or property in the containing class
+            var member = containingType
+                .GetMember(name, BindingFlags.Static | BindingFlags.Public)
+                .FirstOrDefault(m => m.MemberType == MemberTypes.Field || m.MemberType == MemberTypes.Property) 
+                ?? throw new InvalidOperationException($"No static field or property found with the name '{name}' for type '{targetType.Name}'.");
+
+            // Resolve the value from the field or property
+            return member switch
+            {
+                FieldInfo field => field.GetValue(null)
+                    ?? throw new InvalidOperationException($"No value found for static field '{name}' in type '{containingType.Name}'."),
+                PropertyInfo property => property.GetValue(null)
+                    ?? throw new InvalidOperationException($"No value found for static property '{name}' in type '{containingType.Name}'."),
+                _ => throw new InvalidOperationException($"Unsupported member type for '{name}' in type '{containingType.Name}'.")
+            };
+        }
+
+        private static string FormatParameter(object parameter) {
+            if (parameter == null)
+            {
+                return "null";
+            }
+
+            if (parameter is System.Collections.IDictionary dictionary)
+            {
+                return "{" + string.Join(", ", dictionary.Cast<System.Collections.DictionaryEntry>()
+                    .Select(entry => $"{entry.Key}: {entry.Value}")) + "}";
+            }
+
+            // Handle collections explicitly
+            if (parameter is System.Collections.IEnumerable enumerable && parameter is not string)
+            {
+                return "[" + string.Join(", ", enumerable.Cast<object>().Select(FormatParameter)) + "]";
+            }
+            
+            string simpleString = parameter.ToString() ?? "null";
+
+            // Use ToString for custom objects or primitives
+            return simpleString;
+        }
+    }
+}
