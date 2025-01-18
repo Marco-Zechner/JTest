@@ -5,5 +5,6 @@ public enum Status{
     Pending,
     Running,
     Failed,
-    Succeeded
+    Passed,
+    ExecptionThrow
 }

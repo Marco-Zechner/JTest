@@ -1,4 +1,5 @@
 using System.Collections;
+using MarcoZechner.PrettyReflector;
 
 namespace MarcoZechner.JTest; 
 
@@ -10,11 +11,11 @@ public static class Assert
         {
             if (string.IsNullOrEmpty(failMessage))
             {
-                throw new Exception($"Assertion Failed: Expected {expected} but got {actual}");
+                throw new AssertException($"Assertion Failed: Expected {expected} but got {actual}");
             }
             else
             {
-                throw new Exception($"Assertion Failed: {failMessage}");
+                throw new AssertException($"Assertion Failed: {failMessage}");
             }
         }
     }
@@ -24,10 +25,10 @@ public static class Assert
         {
             if (string.IsNullOrEmpty(failMessage))
             {
-                throw new Exception($"Assertion Failed: Expected {expected.Count()} elements but got {actual.Count()}");
+                throw new AssertException($"Assertion Failed: Expected {expected.Count()} elements but got {actual.Count()}");
             }
 
-            throw new Exception("Assertion Failed: " + failMessage);
+            throw new AssertException("Assertion Failed: " + failMessage);
         }
 
         for (int i = 0; i < actual.Count(); i++)
@@ -36,10 +37,10 @@ public static class Assert
             {
                 if (string.IsNullOrEmpty(failMessage))
                 {
-                    throw new Exception($"Assertion Failed: Expected {expected.ElementAt(i)} at index {i} but got {actual.ElementAt(i)}");
+                    throw new AssertException($"Assertion Failed: Expected {expected.ElementAt(i)} at index {i} but got {actual.ElementAt(i)}");
                 }
 
-                throw new Exception("Assertion Failed: " + failMessage);
+                throw new AssertException("Assertion Failed: " + failMessage);
             }
         }
     }
@@ -49,10 +50,10 @@ public static class Assert
         {
             if (string.IsNullOrEmpty(failMessage))
             {
-                throw new Exception($"Assertion Failed: Expected {expected.Count} elements but got {actual.Count}");
+                throw new AssertException($"Assertion Failed: Expected {expected.Count} elements but got {actual.Count}");
             }
 
-            throw new Exception("Assertion Failed: " + failMessage);
+            throw new AssertException("Assertion Failed: " + failMessage);
         }
 
         foreach (var key in expected.Keys)
@@ -61,15 +62,15 @@ public static class Assert
             {
                 if (string.IsNullOrEmpty(failMessage))
                 {
-                    throw new Exception($"Assertion Failed: Expected {expected[key]} at key {key} but got {actual[key]}");
+                    throw new AssertException($"Assertion Failed: Expected {expected[key]} at key {key} but got {actual[key]}");
                 }
 
-                throw new Exception("Assertion Failed: " + failMessage);
+                throw new AssertException("Assertion Failed: " + failMessage);
             }
         }
     }
 
-    public static void Throws(Action action, string expectedError, string failMessage = "")
+    public static void Throws(Action action, Exception expectedException, string failMessage = "")
     {
         Exception? ex = null;
         try
@@ -86,20 +87,29 @@ public static class Assert
         {
             if (string.IsNullOrEmpty(failMessage))
             {
-                throw new Exception("Assertion Failed: Expected exception " + expectedError + " but no exception was thrown");
+                throw new AssertException("Assertion Failed: Expected exception " + expectedException + " but no exception was thrown");
             }
 
-            throw new Exception("Assertion Failed: " + failMessage);
+            throw new AssertException("Assertion Failed: " + failMessage);
         }
 
-        if (ex.Message != expectedError)
+        if (ex.GetType != expectedException.GetType) {
+            if (string.IsNullOrEmpty(failMessage))
+            {
+                throw new AssertException("Assertion Failed: Expected exception type " + expectedException.GetType().PrettyType() + " but got " + ex.GetType().PrettyType());
+            }
+
+            throw new AssertException("Assertion Failed: " + failMessage);
+        }
+
+        if (ex.Message != expectedException.Message)
         {
             if (string.IsNullOrEmpty(failMessage))
             {
-                throw new Exception("Assertion Failed: Expected exception message " + expectedError + " but got " + ex.Message);
+                throw new AssertException("Assertion Failed: Expected exception message " + expectedException.Message + " but got " + ex.Message);
             }
 
-            throw new Exception("Assertion Failed: " + failMessage);
+            throw new AssertException("Assertion Failed: " + failMessage);
         }
     }
 }

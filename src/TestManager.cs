@@ -1,4 +1,6 @@
 using System.Reflection;
+using MarcoZechner.ColorString;
+using MarcoZechner.PrettyReflector;
 
 namespace MarcoZechner.JTest; 
 
@@ -24,20 +26,7 @@ public abstract class TestManager {
         var testTasks = testsToRun.Select(async testCase =>
         {
             testCase.Status = Status.Running;
-            try
-            {
-                await ExecuteTestAsync(testCase);
-                testCase.Status = Status.Succeeded;
-            }
-            catch (Exception ex)
-            {
-                testCase.Status = Status.Failed;
-                testCase.Result = new TestResult
-                {
-                    ErrorMessage = ex.Message,
-                    StackTrace = ex.StackTrace
-                };
-            }
+            await ExecuteTestAsync(testCase);
         });
 
         await Task.WhenAll(testTasks);
@@ -54,11 +43,17 @@ public abstract class TestManager {
     {
         try
         {
-            // Use reflection to get the type and method
-            var testClassType = Type.GetType($"{testCase.NamespaceName}.{testCase.ClassName}") 
-                ?? throw new Exception($"Class {testCase.ClassName} not found.");
+            // Find the assembly that contains the class
+            var testAssembly = Assembly.GetEntryAssembly()
+                ?? throw new Exception("Entry assembly not found.");
 
-            var method = testClassType.GetMethod(testCase.MethodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic) 
+            // Resolve the class type
+            var testClassType = testAssembly.GetTypes()
+                .FirstOrDefault(type => type.FullName == $"{testCase.NamespaceName}.{testCase.ClassName}")
+                ?? throw new Exception($"Class {testCase.ClassName} not found in the assembly.");
+
+            // Resolve the method
+            var method = testClassType.GetMethod(testCase.MethodName, BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic)
                 ?? throw new Exception($"Static method {testCase.MethodName} not found in class {testCase.ClassName}.");
 
             // Prepare parameters
@@ -80,18 +75,61 @@ public abstract class TestManager {
                 method.Invoke(null, parameters);
             }
 
-            testCase.Status = Status.Succeeded;
+            testCase.Status = Status.Passed;
             testCase.Result = new TestResult();
         }
         catch (Exception ex)
         {
-            testCase.Status = Status.Failed;
-            testCase.Result = new TestResult{
-                ErrorMessage = $"Error executing test {testCase.CaseName}: {ex.Message}",
-                StackTrace = ex.StackTrace
+            // var assertException = ex is AssertException assertEx
+            //     ? assertEx
+            //     : ex.InnerException as AssertException;
+
+            // if (assertException != null) {
+            //     testCase.Status = Status.Failed;
+            //     testCase.Result = new TestResult{
+            //         AssertException = assertException
+            //     };
+            //     return;
+            // }
+
+            // Handle general exceptions
+            testCase.Status = Status.ExecptionThrow;
+            var innerException = ex.InnerException;
+
+            testCase.Result = new TestResult
+            {
+                FailMessage = $"{Color.Red:color}Execption:".SetLength(16+12).CombineLines($"{ex.Message}\n{Color.White:color}{ex.StackTrace.Replace(" at ", ">[#0000FF] at >[#FFFFFF]").Replace(" in ", ">[#0000FF] in >[#FFFFFF]")}", "  ")
             };
+
+            if (innerException != null){
+                string innerFailMessage = $"{Color.DarkRed:color}Inner Exception:".CombineLines(innerException.Message + "\n" + innerException.StackTrace.Replace(" at ", ">[#0000FF] at >[#FFFFFF]").Replace(" in ", ">[#0000FF] in >[#FFFFFF]"), "  ");
+                testCase.Result.FailMessage += "\n" + innerFailMessage;
+            }
         }
     }
+
+    public static string EscapeSpecialCharactersRegex(string input)
+{
+    if (string.IsNullOrEmpty(input))
+        return string.Empty;
+
+    return System.Text.RegularExpressions.Regex.Replace(input, @"[\a\b\f\n\r\t\v\\\""]", match =>
+    {
+        return match.Value switch
+        {
+            "\a" => "\\a",
+            "\b" => "\\b",
+            "\f" => "\\f",
+            "\n" => "\\n",
+            "\r" => "\\r",
+            "\t" => "\\t",
+            "\v" => "\\v",
+            "\\" => "\\\\",
+            "\"" => "\\\"",
+            _ => match.Value
+        };
+    });
+}
 
     private static TestNode BuildCodeView(List<TestCase> testCases)
     {

@@ -2,7 +2,7 @@ namespace MarcoZechner.JTest;
 
 public record TestResult
 {
-    public string? ErrorMessage { get; set; }
-    public string? StackTrace { get; set; }
+    public AssertException? AssertException { get; set; }
+    public string? FailMessage { get; set; }
     public long Duration { get; set; }
 }

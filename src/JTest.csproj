@@ -7,10 +7,13 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-<ItemGroup>
-  <Reference Include="PrettyReflector">
-    <HintPath>../libs/PrettyReflector.dll</HintPath>
-  </Reference>
-</ItemGroup>
+  <ItemGroup>
+    <Reference Include="PrettyReflector">
+      <HintPath>../libs/PrettyReflector.dll</HintPath>
+    </Reference>
+    <Reference Include="ColorString">
+      <HintPath>../libs/ColorString.dll</HintPath>
+    </Reference>
+  </ItemGroup>
 
 </Project>
