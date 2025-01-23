@@ -1,5 +1,4 @@
 using System.Reflection;
-using MarcoZechner.ColorString;
 using MarcoZechner.PrettyReflector;
 
 namespace MarcoZechner.JTest; 
@@ -35,7 +34,7 @@ public abstract class TestManager {
 
     public static async Task InteractiveTestRunner()
     {
-        var codeRunner = new CodeRunner(codeView, categoryView);
+        var codeRunner = new CodeRunner([codeView, categoryView]);
         await codeRunner.Render();
     }
 
@@ -80,17 +79,18 @@ public abstract class TestManager {
         }
         catch (Exception ex)
         {
-            // var assertException = ex is AssertException assertEx
-            //     ? assertEx
-            //     : ex.InnerException as AssertException;
+            var assertException = ex is AssertException assertEx
+                ? assertEx
+                : ex.InnerException as AssertException;
 
-            // if (assertException != null) {
-            //     testCase.Status = Status.Failed;
-            //     testCase.Result = new TestResult{
-            //         AssertException = assertException
-            //     };
-            //     return;
-            // }
+            if (assertException != null) {
+                testCase.Status = Status.Failed;
+                testCase.Result = new TestResult{
+                    AssertException = assertException,
+                    FailMessage = "Assert failed:".SetLength(16).CombineLines($"{assertException.Message}\n{assertException.StackTrace}", "  ")
+                };
+                return;
+            }
 
             // Handle general exceptions
             testCase.Status = Status.ExecptionThrow;
@@ -98,11 +98,11 @@ public abstract class TestManager {
 
             testCase.Result = new TestResult
             {
-                FailMessage = $"{Color.Red:color}Execption:".SetLength(16+12).CombineLines($"{ex.Message}\n{Color.White:color}{ex.StackTrace.Replace(" at ", ">[#0000FF] at >[#FFFFFF]").Replace(" in ", ">[#0000FF] in >[#FFFFFF]")}", "  ")
+                FailMessage = "Exception:".SetLength(16).CombineLines($"{ex.Message}\n{ex.StackTrace}", "  ")
             };
 
             if (innerException != null){
-                string innerFailMessage = $"{Color.DarkRed:color}Inner Exception:".CombineLines(innerException.Message + "\n" + innerException.StackTrace.Replace(" at ", ">[#0000FF] at >[#FFFFFF]").Replace(" in ", ">[#0000FF] in >[#FFFFFF]"), "  ");
+                string innerFailMessage = $"Inner Exception:".SetLength(16).CombineLines($"{innerException.Message}\n{innerException.StackTrace}", "  ");
                 testCase.Result.FailMessage += "\n" + innerFailMessage;
             }
         }
@@ -133,20 +133,36 @@ public abstract class TestManager {
 
     private static TestNode BuildCodeView(List<TestCase> testCases)
     {
-        var root = new TestNode { Name = "Root" };
+        var root = new TestNode { Name = "CodeView" };
 
+        testCases = [.. testCases.OrderBy(testCase => testCase.TestName)];
         foreach (var testCase in testCases)
         {
-            var namespaceNode = root.Children.FirstOrDefault(x => x.Name == testCase.NamespaceName)
-                ?? new TestNode { Name = testCase.NamespaceName };
-            if (!root.Children.Contains(namespaceNode))
-                root.Children.Add(namespaceNode);
+            string[] namespaceSections = testCase.NamespaceName.Split('.');
+
+            var currentNode = root;
+            var namespaceNode = root;
+
+            foreach (var section in namespaceSections)
+            {
+                namespaceNode = currentNode.Children.FirstOrDefault(x => x.Name == section)
+                    ?? new TestNode { Name = section };
+                if (!currentNode.Children.Contains(namespaceNode))
+                    currentNode.Children.Add(namespaceNode);
+
+                currentNode = namespaceNode;
+            }
 
             var classNode = namespaceNode.Children.FirstOrDefault(x => x.Name == testCase.ClassName)
                 ?? new TestNode { Name = testCase.ClassName };
             if (!namespaceNode.Children.Contains(classNode))
                 namespaceNode.Children.Add(classNode);
 
+            if (testCase.IsDefault)
+            {
+                classNode.TestCases.Add(testCase);
+                continue;
+            }
             var methodNode = classNode.Children.FirstOrDefault(x => x.Name == testCase.MethodName)
                 ?? new TestNode { Name = testCase.MethodName };
             if (!classNode.Children.Contains(methodNode))
@@ -160,21 +176,40 @@ public abstract class TestManager {
 
     private static TestNode BuildCategoryView(List<TestCase> testCases)
     {
-        var root = new TestNode { Name = "Root" };
+        var root = new TestNode { Name = "CategoryView" };
 
+        testCases = [.. testCases.OrderBy(testCase => testCase.TestName).OrderBy(testCase => testCase.FullCategoryPath)];
         foreach (var testCase in testCases)
         {
             var categories = testCase.FullCategoryPath.Split('/');
+            string? testCaseHolder = null;
+            int otherCaseIndex = testCases.FindIndex(x => x != testCase && x.FullCategoryPath == testCase.FullCategoryPath && x.MethodName == testCase.MethodName);
+            if (otherCaseIndex != -1) {
+                testCaseHolder = testCase.MethodName;
+            }
+                
             var currentNode = root;
 
             foreach (var category in categories)
             {
-                var categoryNode = currentNode.Children.FirstOrDefault(x => x.Name == category)
-                    ?? new TestNode { Name = category };
+                string cateogoryName = category;
+                if (string.IsNullOrEmpty(category))
+                    cateogoryName = "Uncategorized";
+                var categoryNode = currentNode.Children.FirstOrDefault(x => x.Name == cateogoryName)
+                    ?? new TestNode { Name = cateogoryName };
                 if (!currentNode.Children.Contains(categoryNode))
                     currentNode.Children.Add(categoryNode);
 
                 currentNode = categoryNode;
+            }
+            if (testCaseHolder != null)
+            {
+                var holderNode = currentNode.TestCasesHolder.FirstOrDefault(x => x.Name == testCaseHolder)
+                    ?? new TestNode { Name = testCaseHolder };
+                if (!currentNode.TestCasesHolder.Contains(holderNode))
+                    currentNode.TestCasesHolder.Add(holderNode);
+
+                currentNode = holderNode;
             }
 
             currentNode.TestCases.Add(testCase);
