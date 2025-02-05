@@ -11,7 +11,8 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
     private static DisplayPane testSelector = new() {
         PanelName = "Test Selector",
         Content = "",
-        RelativeSize = 0.4f
+        RelativeSize = 0.4f,
+        Truncate = true
     };
 
     private static SplitPane testView = new() {
@@ -42,12 +43,16 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
         }
 
         if (input.Key == ConsoleKey.LeftArrow) {
-            if (selectedIndices.Count > 1)
+            if (input.Modifiers.HasFlag(ConsoleModifiers.Control))
+                testSelector.HorizontalOffset--;
+            else if (selectedIndices.Count > 1)
                 selectedIndices.RemoveAt(selectedIndices.Count - 1);
         }
 
         if (input.Key == ConsoleKey.RightArrow) {
-            if (GetSelectedNode(selectedIndices, codeView[viewNodeIndex]).selectedCase == null)
+            if (input.Modifiers.HasFlag(ConsoleModifiers.Control))
+                testSelector.HorizontalOffset++;
+            else if (GetSelectedNode(selectedIndices, codeView[viewNodeIndex]).selectedCase == null)
                 selectedIndices.Add(0); 
         }
 
