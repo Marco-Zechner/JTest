@@ -11,6 +11,9 @@
     <Reference Include="PrettyReflector">
       <HintPath>../libs/PrettyReflector.dll</HintPath>
     </Reference>
+    <Reference Include="ConsoleBox">
+      <HintPath>../libs/ConsoleBox.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>
