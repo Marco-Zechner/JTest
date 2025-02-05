@@ -1,0 +1,54 @@
+namespace MarcoZechner.JTest{
+
+    public class JTestRenderer{
+        internal static bool IsRunning = true;
+
+        private static event EventHandler<IEnumerable<TestResult>> ResultsUpdatedInternal;
+        public static event EventHandler<IEnumerable<TestResult>> ResultsUpdated{
+            add
+            {
+                if (value == null)
+                    return;
+
+                ResultsUpdatedInternal += value;
+
+                if (custonResultsUpdatedHandlerCount++ == 0) {
+                    ResultsUpdatedInternal -= JTestOutput.RenderTestOutput;
+                }
+            }
+            remove
+            {
+                if (value == null)
+                    return;
+
+                ResultsUpdatedInternal -= value;
+
+                if (--custonResultsUpdatedHandlerCount == 0) {
+                    ResultsUpdatedInternal += JTestOutput.RenderTestOutput;
+                }
+            }
+        }
+
+        private static int custonResultsUpdatedHandlerCount = 0;
+
+
+        static JTestRenderer() {
+            ResultsUpdatedInternal += JTestOutput.RenderTestOutput;
+        }
+
+        public static void StartDisplayThread()
+        {
+            Task.Run(() =>
+            {
+                while (IsRunning)
+                {
+                    lock (JTestRunner._testResults)
+                    {
+                        ResultsUpdatedInternal?.Invoke(null, JTestRunner._testResults);
+                    }
+                    Thread.Sleep(20);
+                }
+            });
+        }
+    }
+}

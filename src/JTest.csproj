@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="PrettyReflector">
+      <HintPath>../libs/PrettyReflector.dll</HintPath>
+    </Reference>
+    <Reference Include="ConsoleBox">
+      <HintPath>../libs/ConsoleBox.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

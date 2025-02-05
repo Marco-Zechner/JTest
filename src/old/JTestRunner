@@ -1,0 +1,136 @@
+using System.Diagnostics;
+using System.Reflection;
+
+namespace MarcoZechner.JTest {
+    public static class JTestRunner
+    {
+        internal static List<TestResult> _testResults = [];
+
+        public static async Task<List<TestResult>> RunTestsAsync()
+        {
+            _testResults = JTestLoader.LoadTests();
+
+            // Display initial status
+            JTestRenderer.StartDisplayThread();
+
+            foreach (var test in _testResults)
+            {
+                // Mark test as running
+                lock (_testResults)
+                {
+                    test.Status = TestStatus.Running;
+                }
+
+                if (test.Cases.Count == 0)
+                {
+                    // Run single test without cases
+                    await RunTestMethodAsync(test);
+                }
+                else
+                {
+                    // Run test cases in parallel
+                    var tasks = test.Cases.Select(testCase => RunTestCaseAsync(test, testCase));
+                    await Task.WhenAll(tasks); // Wait for all test cases to complete
+                    test.Duration = test.Cases.Max(c => c.Duration);
+                }
+
+                lock (_testResults)
+                {
+                    if (test.Cases.All(c => c.Status == TestStatus.Passed))
+                    {
+                        test.Status = TestStatus.Passed;
+                    }
+                }
+            }
+
+            JTestOutput.RenderTestOutput(null, _testResults);
+            JTestRenderer.IsRunning = false;
+            
+            Console.WriteLine("\nPress any key to process, or press 'q' to quit.");
+
+            var key = Console.ReadKey();
+            if (key.KeyChar == 'q')
+            {
+                Environment.Exit(0);
+            }
+
+            // JTestOutput.DisplayInteractiveResults(_testResults);
+
+            return _testResults;
+        }
+
+        private static async Task RunTestMethodAsync(TestResult test)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            try
+            {
+                var method = JTestLoader.FindTestMethod(test.TestName);
+                var result = method.Invoke(null, null);
+
+                if (result is Task task)
+                {
+                    await task;
+                }
+
+                test.PassedCases++;
+                test.Status = TestStatus.Passed; 
+            }
+            catch (Exception ex)
+            {
+                if (ex is TargetInvocationException tie && tie.InnerException != null)
+                {
+                    // Unwrap the inner exception to get the actual error
+                    ex = tie.InnerException;
+                }
+
+                test.Status = TestStatus.Failed;
+                test.ErrorMessage = ex.Message + "\n" + ex.StackTrace;
+            }
+            finally
+            {
+                stopwatch.Stop();
+                test.Duration = stopwatch.ElapsedMilliseconds;
+            }
+        }
+
+        private static async Task RunTestCaseAsync(TestResult test, CaseResult testCase)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            try
+            {
+                testCase.Status = TestStatus.Running;
+
+                var method = JTestLoader.FindTestMethod(test.TestName);
+                var parameters = JTestLoader.ParseParameters(method.GetParameters(), testCase.Parameters);
+                var result = method.Invoke(null, parameters);
+
+                if (result is Task task)
+                {
+                    await task; // Await the async test method
+                }
+
+                testCase.Status = TestStatus.Passed;
+                test.PassedCases++;
+            }
+            catch (Exception ex)
+            {
+                if (ex is TargetInvocationException tie && tie.InnerException != null)
+                {
+                    // Unwrap the inner exception to get the actual error
+                    ex = tie.InnerException;
+                }
+
+                testCase.Status = TestStatus.Failed;
+                testCase.ErrorMessage = ex.Message + "\n" + ex.StackTrace;
+                test.Status = TestStatus.Failed;
+            }
+            finally
+            {
+                stopwatch.Stop();
+                testCase.Duration = stopwatch.ElapsedMilliseconds;
+            }
+        }
+    }
+}

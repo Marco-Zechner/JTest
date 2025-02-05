@@ -1,0 +1,266 @@
+namespace MarcoZechner.JTest{
+    public class JTestOutput {
+        
+
+        private static int _consoleTop = -1;
+
+        public static void RenderTestOutput(object? sender, IEnumerable<TestResult> testResult){
+            DisplayResults(testResult);
+        }
+
+        private static void DisplayResults(IEnumerable<TestResult> testResults)
+        {
+            if (_consoleTop == -1)
+            {
+                _consoleTop = Console.CursorTop;
+            }
+            int top = Console.CursorTop;
+
+            Console.SetCursorPosition(0, _consoleTop);
+            Console.CursorVisible = false;
+            // Clear previous output
+            for (int i = _consoleTop; i < top; i++)
+            {
+                Console.WriteLine(new string(' ', Console.WindowWidth));
+            }
+
+            Console.SetCursorPosition(0, _consoleTop);
+            Console.CursorVisible = false;
+
+            int totalCases = testResults.Sum(t => t.TotalCases);
+            int passedCases = testResults.Sum(t => t.PassedCases);
+
+            long totalDuration = testResults.Sum(t => t.Duration);
+
+            Console.WriteLine($"Total - [{passedCases}/{totalCases} - {totalDuration}ms]");
+
+            foreach (var test in testResults)
+            {
+                var symbol = test.Status switch
+                {
+                    TestStatus.Pending => "⚬",
+                    TestStatus.Running => "◌",
+                    TestStatus.Passed => "✅",
+                    TestStatus.Failed => "❌",
+                    _ => "???"
+                };
+
+                string durationTest = $" [{test.Duration}ms]";
+                string cases = test.Cases.Count == 0 ? "" : $" [{test.PassedCases}/{test.TotalCases}]";
+
+                Console.Write($"{symbol} {test.TestName}{cases}{durationTest}");
+                if (test.Status == TestStatus.Failed && test.Cases.Count == 0)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Write($" // {test.ErrorMessage?.Split('\n')[0]}");
+                    Console.ResetColor();
+                }
+                Console.WriteLine();
+
+                if (test.Status == TestStatus.Passed || test.Status == TestStatus.Pending) {
+                    continue;
+                }
+
+                if (test.Cases.Count > 0)
+                {
+                    foreach (var testCase in test.Cases)
+                    {
+                        var caseSymbol = testCase.Status switch
+                        {
+                            TestStatus.Pending => "⚬",
+                            TestStatus.Running => "◌",
+                            TestStatus.Passed => "✅",
+                            TestStatus.Failed => "❌",
+                            _ => "???"
+                        };
+
+                        if (!test.Cases.Any(c => c.Status == TestStatus.Running) && (testCase.Status == TestStatus.Passed)) {
+                            continue;
+                        }
+
+                        string durationCase = $" [{testCase.Duration}ms]";
+
+                        Console.Write($"\t{caseSymbol} {testCase.CaseName}({testCase.ParametersString}){durationCase}");
+
+                        if (testCase.Status == TestStatus.Failed)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Red;
+                            Console.Write($" // {testCase.ErrorMessage?.Split('\n')[0]}");
+                            Console.ResetColor();
+                        }
+                        Console.WriteLine();
+                    }
+                }
+            }
+        }
+    
+        private static bool selectingTest = true;
+        private static int selectedTest = 0;
+        private static int selectedCase = 0;
+        private static readonly List<(bool expanded, List<bool> casesExpanded)> testCasesDisplayStyle = [];
+
+        public static void DisplayInteractiveResults(IEnumerable<TestResult> testResults) {
+            var testResultsList = testResults.ToList();
+
+            int totalCases = testResults.Sum(t => t.TotalCases);
+            int passedCases = testResults.Sum(t => t.PassedCases);
+            long totalDuration = testResults.Sum(t => t.Duration);
+            Console.WriteLine($"Total - [{passedCases}/{totalCases} - {totalDuration}ms]");
+            
+
+
+            for (int i = 0; i < testResultsList.Count; i++) {
+                testCasesDisplayStyle.Add((false, new List<bool>(testResultsList[i].Cases.Count)));
+                for (int j = 0; j < testResultsList[i].Cases.Count; j++) {
+                    testCasesDisplayStyle[i].casesExpanded.Add(false);
+                }
+            }
+
+            bool initialDisplay = true;
+            while (true) {
+                if (Console.KeyAvailable || initialDisplay) {
+                    if (initialDisplay){
+                        initialDisplay = false;
+                    }
+                    else {
+                        if (HandleInput(testResultsList)) {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    Thread.Sleep(20);
+                    continue;
+                }
+
+                int top = Console.CursorTop;
+                Console.SetCursorPosition(0, _consoleTop + 1);
+                Console.CursorVisible = false;
+                for (int i = _consoleTop + 1; i < top; i++) {
+                    Console.WriteLine(new string(' ', Console.WindowWidth));
+                }
+                Console.SetCursorPosition(0, _consoleTop + 1);
+                Console.CursorVisible = false;
+
+                for (int i = 0; i < testResultsList.Count; i++)
+                {
+                    string selected = i == selectedTest ? "> " : "  ";
+
+                    TestResult? test = testResultsList[i];
+                    var symbol = test.Status switch
+                    {
+                        TestStatus.Pending => "⚬",
+                        TestStatus.Running => "◌",
+                        TestStatus.Passed => "✅",
+                        TestStatus.Failed => "❌",
+                        _ => "???"
+                    };
+
+                    string durationTest = $"[{test.Duration}ms]";
+                    string cases = test.Cases.Count == 0 ? "" : $"[{test.PassedCases}/{test.TotalCases}]";
+
+                    Console.Write($"{selected}{symbol} {test.TestName} {cases} {durationTest}");
+                    if (test.Status == TestStatus.Failed && test.Cases.Count == 0)
+                    {
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        if (!testCasesDisplayStyle[i].expanded)
+                        {
+                            Console.Write($" // {test.ErrorMessage?.Split('\n')[0]}");
+                        }
+                        else
+                        {
+                            Console.Write($"\n    {test.ErrorMessage}");
+                        }
+                        Console.ResetColor();
+                    }
+                    Console.WriteLine();
+
+                    if (test.Cases.Count > 0 && (testCasesDisplayStyle[i].expanded || (selectedTest == i && !selectingTest)))
+                    {
+                        for (int i1 = 0; i1 < test.Cases.Count; i1++)
+                        {
+                            selected = i == selectedTest && i1 == selectedCase && !selectingTest ? "> " : "  ";
+
+                            CaseResult? testCase = test.Cases[i1];
+                            var caseSymbol = testCase.Status switch
+                            {
+                                TestStatus.Pending => "◌",
+                                TestStatus.Passed => "✅",
+                                TestStatus.Failed => "❌",
+                                _ => "???"
+                            };
+
+                            string durationCase = $"[{testCase.Duration}ms]";
+
+                            var indentParameters = new string(' ', $"  {selected}{caseSymbol} {testCase.CaseName}".Length);
+                            if (!testCasesDisplayStyle[i].casesExpanded[i1])
+                                Console.Write($"  {selected}{caseSymbol} {testCase.CaseName}({string.Join($"\n{indentParameters}", string.Join(", ", testCase.ParametersString).Split('\n'))}) {durationCase}");
+                            else
+                                Console.Write($"  {selected}{caseSymbol} {testCase.CaseName}(\n{string.Join($"\n{indentParameters}", testCase.ParametersString)}\n) {durationCase}");
+
+                            if (testCase.Status == TestStatus.Failed)
+                            {
+                                Console.ForegroundColor = ConsoleColor.Red;
+                                testCase.ErrorMessage ??= "No error message provided.";
+                                if (!testCasesDisplayStyle[i].casesExpanded[i1])
+                                {
+                                    Console.Write($" // {testCase.ErrorMessage.Split('\n')[0]}");
+                                }
+                                else {
+                                    Console.Write($"\n      {string.Join("\n      ", testCase.ErrorMessage.Split('\n'))}");
+                                }
+                                Console.ResetColor();
+                            }
+                            Console.WriteLine();
+                        }
+                    }
+                }
+            }
+        }
+    
+        private static bool HandleInput(List<TestResult> testResultsList) {
+            var key = Console.ReadKey(true);
+            if (key.KeyChar == 'q') {
+                return true;
+            }
+            if (key.Key == ConsoleKey.UpArrow) {
+                if (selectingTest) {
+                    selectedTest--;
+                } else {
+                    selectedCase--;
+                }
+            }
+            if (key.Key == ConsoleKey.DownArrow) {
+                if (selectingTest) {
+                    selectedTest++;
+                } else {
+                    selectedCase++;
+                }
+            }
+            selectedTest = Math.Max(0, Math.Min(selectedTest, testResultsList.Count - 1));
+            selectedCase = Math.Max(0, Math.Min(selectedCase, testResultsList[selectedTest].Cases.Count - 1));
+            if (key.Key == ConsoleKey.LeftArrow) {
+                selectedCase = 0;
+            }
+            if (key.Key == ConsoleKey.LeftArrow) {
+                selectingTest = true;
+            }
+            if (key.Key == ConsoleKey.RightArrow) {
+                if (testResultsList[selectedTest].Cases.Count > 0) {
+                    selectingTest = false;
+                }
+            }
+            if (key.Key == ConsoleKey.Enter) {
+                if (selectingTest) {
+                    var styleInfo = testCasesDisplayStyle[selectedTest];
+                    styleInfo.expanded = !styleInfo.expanded;
+                    testCasesDisplayStyle[selectedTest] = styleInfo;
+                } else {
+                    testCasesDisplayStyle[selectedTest].casesExpanded[selectedCase] = !testCasesDisplayStyle[selectedTest].casesExpanded[selectedCase];
+                }
+            }
+            return false;
+        }
+    }
+}
