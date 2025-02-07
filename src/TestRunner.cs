@@ -21,6 +21,33 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
         RelativeSize = 0.6f
     };
 
+    private static SplitPane variableView = new() {
+        Orientation = Orientation.Horizontal,
+        PanelName = "Variable View",
+        RelativeSize = 0.3f
+    };
+
+    private static DisplayPane testResultView = new() {
+        PanelName = "Test Result View",
+        Content = "",
+        RelativeSize = 0.7f,
+        Truncate = true
+    };
+
+    private static DisplayPane variableNameView = new() {
+        PanelName = "Variable Result View",
+        Content = "",
+        RelativeSize = 0.3f,
+        Truncate = true
+    };
+
+    private static DisplayPane variableValueView = new() {
+        PanelName = "Variable Result View",
+        Content = "",
+        RelativeSize = 0.7f,
+        Truncate = true
+    };
+
     private static SplitPane layer1 = new() {
         Orientation = Orientation.Horizontal,
         PanelName = "Layer 1",
@@ -82,6 +109,12 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
         layer1.Panels.Add(testSelector);
         layer1.AddSeperator();
         layer1.Panels.Add(testView);
+        testView.Panels.Add(variableView);
+        testView.AddSeperator();
+        testView.Panels.Add(testResultView);
+        variableView.Panels.Add(variableNameView);
+        variableView.AddSeperator();
+        variableView.Panels.Add(variableValueView);
 
         main.HandleInputMethod = HandleInput;
         main.BeforeRender = BeforeRender;    
