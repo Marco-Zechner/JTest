@@ -31,7 +31,7 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
         PanelName = "Test Result View",
         Content = "",
         RelativeSize = 0.7f,
-        Truncate = true
+        Truncate = false
     };
 
     private static DisplayPane variableNameView = new() {
@@ -94,13 +94,40 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
             if (selectedIndices.Count > 0 && selectedIndices[^1] < maxIndex - 1)
                 selectedIndices[^1]++;
         }
+
+        if (input.Key == ConsoleKey.Enter) {
+            var (selectedNode, selectedCase) = GetSelectedNode(selectedIndices, codeView[viewNodeIndex]);
+            if (selectedCase != null)
+            {
+                testRunner = TestManager.RunTestsAsync([selectedCase]);
+                Task.Run(async () => {
+                    await testRunner;
+                });
+            }
+        }
     }
+
+    private Task<List<TestCase>>? testRunner = null;
 
     private Task BeforeRender(PanelBase root, RenderBuffer current) {
         testSelector.Content = Render(codeView[viewNodeIndex], selectedIndices);
         var (selectedNode, selectedCase) = GetSelectedNode(selectedIndices, codeView[viewNodeIndex]);
         testSelector.Content += selectedCase == null ? (selectedNode?.Name ?? "No node selected") : selectedCase.TestName;
         testSelector.Content += string.Join(" -> ", selectedIndices);
+
+        if (testRunner != null)
+        {
+            if (testRunner.IsCompleted) {
+                var result = testRunner.Result;
+
+                variableNameView.Content = string.Join("\n", result.SelectMany(testCase => testCase.Parameters.Select(parameter => parameter.ParameterName)));
+                variableValueView.Content = string.Join("\n", result.SelectMany(testCase => testCase.Parameters.Select(parameter => parameter.ParameterValue.PrettyValue())));
+
+                testResultView.Content = string.Join("\n", result.Select(testCase => $"{testCase.TestName} = {testCase.Status}\n\n{testCase.Result}"));
+                testRunner = null;
+            }
+        }
+
         return Task.CompletedTask;
     }
 
