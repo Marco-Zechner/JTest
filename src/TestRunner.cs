@@ -120,7 +120,7 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
             if (testRunner.IsCompleted) {
                 var result = testRunner.Result;
 
-                variableNameView.Content = string.Join("\n", result.SelectMany(testCase => testCase.Parameters.Select(parameter => parameter.ParameterName)));
+                variableNameView.Content = string.Join("\n", result.SelectMany(testCase => testCase.Parameters.Select(parameter => $"{parameter.ParameterType.PrettyType()} {parameter.ParameterName}")));
                 variableValueView.Content = string.Join("\n", result.SelectMany(testCase => testCase.Parameters.Select(parameter => parameter.ParameterValue.PrettyValue())));
 
                 testResultView.Content = string.Join("\n", result.Select(testCase => $"{testCase.TestName} = {testCase.Status}\n\n{testCase.Result}"));
