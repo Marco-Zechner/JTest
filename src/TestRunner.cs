@@ -8,6 +8,14 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
 {
     private readonly List<TestNode> codeView = rootNodesForViews;
 
+
+    private static DisplayPane pathView = new() {
+        PanelName = "Path View",
+        Content = "",
+        FixedSize = 1,
+        Truncate = true
+    };
+
     private static DisplayPane testSelector = new() {
         PanelName = "Test Selector",
         Content = "",
@@ -49,8 +57,15 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
     };
 
     private static SplitPane layer1 = new() {
-        Orientation = Orientation.Horizontal,
+        Orientation = Orientation.Vertical,
         PanelName = "Layer 1",
+        RelativeSize = 1
+    };
+
+    private static SplitPane layer2 = new() {
+        Orientation = Orientation.Horizontal,
+        PanelName = "Layer 2",
+        RelativeSize = 1
     };
 
     private PanelManager main = new();
@@ -112,8 +127,9 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
     private Task BeforeRender(PanelBase root, RenderBuffer current) {
         testSelector.Content = Render(codeView[viewNodeIndex], selectedIndices);
         var (selectedNode, selectedCase) = GetSelectedNode(selectedIndices, codeView[viewNodeIndex]);
-        testSelector.Content += selectedCase == null ? (selectedNode?.Name ?? "No node selected") : selectedCase.TestName;
-        testSelector.Content += string.Join(" -> ", selectedIndices);
+        pathView.Content = selectedCase == null ? (selectedNode?.Name ?? "No node selected") : selectedCase.TestName;
+        pathView.Content += string.Join(" -> ", selectedIndices);
+        pathView.HorizontalOffset = pathView.Content.Length - 1;
 
         if (testRunner != null)
         {
@@ -133,9 +149,12 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
 
     public async Task Render() {
         main.RootPanel = layer1;
-        layer1.Panels.Add(testSelector);
+        layer1.Panels.Add(layer2);
         layer1.AddSeperator();
-        layer1.Panels.Add(testView);
+        layer1.Panels.Add(pathView);
+        layer2.Panels.Add(testSelector);
+        layer2.AddSeperator();
+        layer2.Panels.Add(testView);
         testView.Panels.Add(variableView);
         testView.AddSeperator();
         testView.Panels.Add(testResultView);
@@ -166,7 +185,7 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
                 selectedNode = selectedNode.Children[relativeIndex];
                 continue;
             }
-            throw new InvalidOperationException("Invalid selection index");
+            return (null, null);
         }
         return (selectedNode, null);
     }
