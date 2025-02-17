@@ -171,6 +171,10 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
 
                 variableNameView.Content = string.Join("\n", selectedResult.Parameters.Select(parameter => $"{parameter.ParameterType.PrettyType()} {parameter.ParameterName}"));
                 variableValueView.Content = string.Join("\n", selectedResult.Parameters.Select(parameter => parameter.ParameterValue.PrettyValue()));
+
+                testView.Panels[0].IsVisible = selectedResult.Parameters.Count != 0;
+                testView.Panels[1].IsVisible = selectedResult.Parameters.Count != 0;
+
                 testResultView.Content = $"{selectedResult.TestName} = {selectedResult.Status}\n\n{selectedResult.Result}";
             }
         }
