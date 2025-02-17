@@ -19,14 +19,14 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
     private static DisplayPane testSelector = new() {
         PanelName = "Test Selector",
         Content = "",
-        RelativeSize = 0.4f,
+        RelativeSize = 0.3f,
         Truncate = true
     };
 
     private static SplitPane testView = new() {
         Orientation = Orientation.Vertical,
         PanelName = "Test View",
-        RelativeSize = 0.6f
+        RelativeSize = 0.7f
     };
 
     private static SplitPane variableView = new() {
@@ -39,7 +39,7 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
         PanelName = "Test Result View",
         Content = "",
         RelativeSize = 0.7f,
-        Truncate = false
+        Truncate = true
     };
 
     private static DisplayPane variableNameView = new() {
@@ -119,28 +119,59 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
                     await testRunner;
                 });
             }
+            else if (selectedNode != null) {
+                Queue<TestNode> nodes = new();
+                List<TestCase> testCases = [];
+                nodes.Enqueue(selectedNode);
+
+                while (nodes.Count > 0)
+                {
+                    var node = nodes.Dequeue();
+                    testCases.AddRange(node.TestCases);
+                    foreach (var child in node.Children)
+                        nodes.Enqueue(child);
+                    foreach (var holder in node.TestCasesHolder)
+                        nodes.Enqueue(holder);
+                }
+
+                testRunner = TestManager.RunTestsAsync(testCases);
+                selectedResultIndex = 0;
+            }
+        }
+
+        int resultCount = testRunner?.Result.Count ?? 0;
+
+        if (input.Key == ConsoleKey.PageUp) {
+            if (selectedResultIndex < resultCount - 1)
+                selectedResultIndex++;
+        }
+
+        if (input.Key == ConsoleKey.PageDown) {
+            if (selectedResultIndex > 0)
+                selectedResultIndex--;
         }
     }
 
     private Task<List<TestCase>>? testRunner = null;
+    private int selectedResultIndex = 0;
 
     private Task BeforeRender(PanelBase root, RenderBuffer current) {
         testSelector.Content = Render(codeView[viewNodeIndex], selectedIndices);
         var (selectedNode, selectedCase) = GetSelectedNode(selectedIndices, codeView[viewNodeIndex]);
         pathView.Content = selectedCase == null ? (selectedNode?.Name ?? "No node selected") : selectedCase.TestName;
-        pathView.Content += string.Join(" -> ", selectedIndices);
+        int resultCount = testRunner?.Result.Count ?? 0;
+        pathView.Content += ": " + string.Join(" -> ", selectedIndices) + $"\t\t\t[{selectedResultIndex + 1}/{resultCount}]";
         pathView.HorizontalOffset = pathView.Content.Length - 1;
 
         if (testRunner != null)
         {
             if (testRunner.IsCompleted) {
                 var result = testRunner.Result;
+                var selectedResult = result[selectedResultIndex];
 
-                variableNameView.Content = string.Join("\n", result.SelectMany(testCase => testCase.Parameters.Select(parameter => $"{parameter.ParameterType.PrettyType()} {parameter.ParameterName}")));
-                variableValueView.Content = string.Join("\n", result.SelectMany(testCase => testCase.Parameters.Select(parameter => parameter.ParameterValue.PrettyValue())));
-
-                testResultView.Content = string.Join("\n", result.Select(testCase => $"{testCase.TestName} = {testCase.Status}\n\n{testCase.Result}"));
-                testRunner = null;
+                variableNameView.Content = string.Join("\n", selectedResult.Parameters.Select(parameter => $"{parameter.ParameterType.PrettyType()} {parameter.ParameterName}"));
+                variableValueView.Content = string.Join("\n", selectedResult.Parameters.Select(parameter => parameter.ParameterValue.PrettyValue()));
+                testResultView.Content = $"{selectedResult.TestName} = {selectedResult.Status}\n\n{selectedResult.Result}";
             }
         }
 
@@ -150,16 +181,16 @@ public class CodeRunner(List<TestNode> rootNodesForViews)
     public async Task Render() {
         main.RootPanel = layer1;
         layer1.Panels.Add(layer2);
-        layer1.AddSeperator();
+        layer1.AddSeperator('─');
         layer1.Panels.Add(pathView);
         layer2.Panels.Add(testSelector);
-        layer2.AddSeperator();
+        layer2.AddSeperator('│');
         layer2.Panels.Add(testView);
         testView.Panels.Add(variableView);
-        testView.AddSeperator();
+        testView.AddSeperator('─');
         testView.Panels.Add(testResultView);
         variableView.Panels.Add(variableNameView);
-        variableView.AddSeperator();
+        variableView.AddSeperator('│');
         variableView.Panels.Add(variableValueView);
 
         main.HandleInputMethod = HandleInput;
